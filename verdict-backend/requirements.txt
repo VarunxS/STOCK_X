@@ -1,0 +1,11 @@
+langchain>=0.3
+langchain-openai
+langgraph>=0.4
+tavily-python
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+pydantic>=2.0
+python-docx
+sentence-transformers

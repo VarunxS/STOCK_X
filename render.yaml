@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: stockx-backend
+    env: python
+    plan: free
+    rootDir: verdict-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TAVILY_API_KEY
+        sync: false
+
+  - type: web
+    name: stockx-frontend
+    env: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.16.0
+      - key: VERDICT_BACKEND_URL
+        sync: false
+      - key: STOCKX_BACKEND_URL
+        sync: false

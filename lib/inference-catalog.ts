@@ -41,6 +41,11 @@ export const PROVIDER_OPTIONS: ProviderOption[] = [
 export const MODEL_OPTIONS_BY_PROVIDER: Record<InferenceProvider, ModelOption[]> = {
   openrouter: [
     {
+      value: 'openai/gpt-4o-mini',
+      label: 'GPT-4o Mini',
+      note: 'Recommended for affordable analysis and DataPulse queries via OpenRouter.',
+    },
+    {
       value: 'anthropic/claude-sonnet-4',
       label: 'Claude Sonnet',
       note: 'Anthropic via OpenRouter.',
@@ -54,11 +59,6 @@ export const MODEL_OPTIONS_BY_PROVIDER: Record<InferenceProvider, ModelOption[]>
       value: 'google/gemini-3.1-pro-preview',
       label: 'Gemini 3.1 Pro Preview',
       note: 'Preview Gemini reasoning model via OpenRouter.',
-    },
-    {
-      value: 'openai/gpt-5.6',
-      label: 'GPT-5.6',
-      note: 'OpenAI flagship alias via OpenRouter.',
     },
     {
       value: 'openai/gpt-5.6-terra',

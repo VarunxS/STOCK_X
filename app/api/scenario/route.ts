@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { errorMessage } from '@/lib/errors'
 
-const BACKEND_URL = process.env.VERDICT_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.VERDICT_BACKEND_URL || process.env.STOCKX_BACKEND_URL || 'http://localhost:8000'
 
 function formatProviderError(rawError: string, providerType: string, modelName: string): string {
     const lower = rawError.toLowerCase()
+    if (lower.includes('error code: 402') || lower.includes('insufficient credits') || lower.includes('requires more credits')) {
+        return `The selected model ${modelName} exceeds the available inference credits. Choose GPT-4o Mini in Inference settings or add provider credits.`
+    }
     if (lower.includes('insufficient permissions')) {
         if (providerType === 'openai') {
             return `Your OpenAI key is valid, but this project does not have access to ${modelName}. Try GPT-4.1 Mini first, switch to another OpenAI model, or use OpenRouter instead.`
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
         })
 
         const raw = await response.text()
-        let payload: any = null
+        let payload: Record<string, unknown> | null = null
         try {
             payload = raw ? JSON.parse(raw) : {}
         } catch {
@@ -56,7 +60,7 @@ export async function POST(request: NextRequest) {
                 {
                     success: false,
                     error: formatProviderError(
-                        payload?.detail || payload?.error || raw || 'Scenario request failed',
+                        String(payload?.detail || payload?.error || raw || 'Scenario request failed'),
                         body.providerType,
                         body.modelName,
                     ),
@@ -73,9 +77,9 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ success: true, ...payload })
-    } catch (error: any) {
+    } catch (error: unknown) {
         return NextResponse.json(
-            { success: false, error: error?.message || 'Scenario request failed' },
+            { success: false, error: errorMessage(error, 'Scenario request failed') },
             { status: 500 }
         )
     }

@@ -177,8 +177,12 @@ def retrieve_context(index: dict[str, Any], query: str, top_k: int = 6) -> list[
 
 
 def build_source_summary(sources: list[dict[str, Any]]) -> dict[str, Any]:
-    filing_domains = {"sec.gov", "annualreports.com"}
-    filings = [source for source in sources if source.get("domain") in filing_domains]
+    filing_domains = {"sec.gov", "annualreports.com", "nseindia.com", "bseindia.com", "sebi.gov.in"}
+    def is_filing(source: dict[str, Any]) -> bool:
+        host = (urlparse(source.get("url", "")).hostname or source.get("domain", "")).lower().rstrip(".")
+        return any(host == domain or host.endswith("." + domain) for domain in filing_domains)
+
+    filings = [source for source in sources if is_filing(source)]
     return {
         "sourceCount": len(sources),
         "filingSourceCount": len(filings),
@@ -194,4 +198,5 @@ def build_coverage_status(financial_data: dict[str, Any], source_summary: dict[s
         "resolvedSymbol": symbol_info.get("resolved_symbol", symbol_info.get("input_ticker", "")),
         "filings": filing_status,
         "workspaceMode": "temporary",
+        "financialData": "available" if symbol_info.get("resolution_status") == "confirmed" else "unavailable",
     }

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { errorMessage } from '@/lib/errors'
 
 const BACKEND_URL = process.env.VERDICT_BACKEND_URL || process.env.STOCKX_BACKEND_URL || 'http://localhost:8000'
 
 function formatProviderError(rawError: string, providerType: string, modelName: string): string {
     const lower = rawError.toLowerCase()
+    if (lower.includes('error code: 402') || lower.includes('insufficient credits') || lower.includes('requires more credits')) {
+        return `The selected model ${modelName} exceeds the available inference credits. Choose GPT-4o Mini in Inference settings or add provider credits.`
+    }
     if (lower.includes('insufficient permissions')) {
         if (providerType === 'openai') {
             return `Your OpenAI key is valid, but this project does not have access to ${modelName}. Try GPT-4.1 Mini first, switch to another OpenAI model, or use OpenRouter instead.`
@@ -22,6 +26,21 @@ function formatProviderError(rawError: string, providerType: string, modelName: 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
+        if (body.action === 'clear') {
+            if (!body.workspaceId) {
+                return NextResponse.json({ success: false, error: 'Workspace ID is required' }, { status: 400 })
+            }
+            const response = await fetch(`${BACKEND_URL}/workspace/clear-history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_id: body.workspaceId }),
+            })
+            const payload = await response.json()
+            if (!response.ok) {
+                return NextResponse.json({ success: false, error: payload.detail || 'Failed to clear history' }, { status: response.status })
+            }
+            return NextResponse.json({ success: true, ...payload })
+        }
         if (!body.apiKey || !body.providerType || !body.modelName) {
             return NextResponse.json(
                 { success: false, error: 'Inference provider, API key, and model are required' },
@@ -36,7 +55,7 @@ export async function POST(request: NextRequest) {
         }
 
         // If action is suggest-questions
-        if (body.action === 'suggest') {
+        if (body.action === 'suggest' || body.suggestOnly === true) {
             const response = await fetch(`${BACKEND_URL}/workspace/suggest-questions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -48,7 +67,7 @@ export async function POST(request: NextRequest) {
                 }),
             })
             const raw = await response.text()
-            let payload: any = null
+            let payload: Record<string, unknown> | null = null
             try {
                 payload = raw ? JSON.parse(raw) : {}
             } catch {
@@ -59,7 +78,7 @@ export async function POST(request: NextRequest) {
                     {
                         success: false,
                         error: formatProviderError(
-                            payload?.detail || payload?.error || raw || 'Failed to suggest questions',
+                            String(payload?.detail || payload?.error || raw || 'Failed to suggest questions'),
                             body.providerType,
                             body.modelName,
                         ),
@@ -67,7 +86,13 @@ export async function POST(request: NextRequest) {
                     { status: response.status }
                 )
             }
-            return NextResponse.json({ success: true, ...payload })
+            if (!payload || typeof payload !== 'object') {
+                return NextResponse.json({ success: false, error: 'Invalid suggestions response' }, { status: 502 })
+            }
+            if (!payload || typeof payload !== 'object') {
+                return NextResponse.json({ success: false, error: 'Invalid suggestions response' }, { status: 502 })
+            }
+            return NextResponse.json({ success: true, ...payload, suggestedQuestions: payload.suggestedQuestions || payload.questions || [] })
         }
 
         // Default: RAG Q&A
@@ -92,7 +117,7 @@ export async function POST(request: NextRequest) {
         })
 
         const raw = await response.text()
-        let payload: any = null
+        let payload: Record<string, unknown> | null = null
         try {
             payload = raw ? JSON.parse(raw) : {}
         } catch {
@@ -104,7 +129,7 @@ export async function POST(request: NextRequest) {
                 {
                     success: false,
                     error: formatProviderError(
-                        payload?.detail || payload?.error || raw || 'Q&A request failed',
+                        String(payload?.detail || payload?.error || raw || 'Q&A request failed'),
                         body.providerType,
                         body.modelName,
                     ),
@@ -121,9 +146,9 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ success: true, ...payload })
-    } catch (error: any) {
+    } catch (error: unknown) {
         return NextResponse.json(
-            { success: false, error: error?.message || 'Q&A request failed' },
+            { success: false, error: errorMessage(error, 'Q&A request failed') },
             { status: 500 }
         )
     }

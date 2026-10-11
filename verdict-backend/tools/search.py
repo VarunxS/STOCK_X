@@ -56,6 +56,9 @@ async def search_multiple(queries: list[str]) -> list[dict]:
 
     Returns a list of all search results aggregated.
     """
+    if not TAVILY_API_KEY:
+        print("[SEARCH WARNING] TAVILY_API_KEY is not configured; research sources are unavailable")
+        return []
     tasks = [search_query(q) for q in queries]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

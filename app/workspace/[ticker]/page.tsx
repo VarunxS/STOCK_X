@@ -13,17 +13,13 @@ import {
     ChevronDown,
     ChevronUp,
     HelpCircle,
-    CheckCircle2,
     Trash2,
-    TrendingUp,
     Activity,
-    BarChart3,
-    Layers,
     FileText,
-    ArrowLeft,
 } from 'lucide-react'
 
 import { ApiKeyModal } from '@/components/layout/ApiKeyModal'
+import { errorMessage } from '@/lib/errors'
 import {
     clearWorkspaceSession,
     getApiKey,
@@ -103,13 +99,13 @@ function QAInteractionCard({
             </div>
 
             {/* Evidence & Sources drawer */}
-            {interaction.evidence && interaction.evidence.length > 0 && (
+            {interaction.evidence_used && interaction.evidence_used.length > 0 && (
                 <div className="pt-2 border-t border-slate-100">
                     <button
                         onClick={() => setShowEvidence(!showEvidence)}
                         className="text-xs font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 transition-colors"
                     >
-                        <span>{interaction.evidence.length} Filing Sources Cited</span>
+                        <span>{interaction.evidence_used.length} Filing Sources Cited</span>
                         {showEvidence ? (
                             <ChevronUp className="w-3.5 h-3.5" />
                         ) : (
@@ -119,10 +115,10 @@ function QAInteractionCard({
 
                     {showEvidence && (
                         <div className="mt-3 space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
-                            {interaction.evidence.map((ev, i) => (
+                            {interaction.evidence_used.map((ev, i) => (
                                 <div key={i} className="text-xs text-slate-600 pb-2 border-b border-slate-200/60 last:border-b-0 last:pb-0">
                                     <div className="font-semibold text-slate-900">{ev.title}</div>
-                                    <div className="text-slate-500 mt-0.5">{ev.snippet}</div>
+                                    <div className="text-slate-500 mt-0.5">{ev.reason}</div>
                                     {ev.url && (
                                         <a
                                             href={ev.url}
@@ -142,13 +138,13 @@ function QAInteractionCard({
             )}
 
             {/* Follow-up Question Suggestions */}
-            {interaction.followupSuggestions && interaction.followupSuggestions.length > 0 && (
+            {interaction.suggested_followups && interaction.suggested_followups.length > 0 && (
                 <div className="pt-3 border-t border-slate-100">
                     <div className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wider">
                         Suggested Follow-Up
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                        {interaction.followupSuggestions.map((fu, idx) => (
+                        {interaction.suggested_followups.map((fu, idx) => (
                             <button
                                 key={idx}
                                 onClick={() => onAskFollowup(fu)}
@@ -174,6 +170,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
     const [error, setError] = useState('')
     const [showKeyModal, setShowKeyModal] = useState(false)
     const [exporting, setExporting] = useState(false)
+    const [clearingHistory, setClearingHistory] = useState(false)
 
     // DataPulse Agent state
     const [questionInput, setQuestionInput] = useState('')
@@ -242,9 +239,9 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                 }
                 setWorkspace(nextWorkspace)
                 saveWorkspaceSession(ticker, nextWorkspace)
-            } catch (caughtError: any) {
+            } catch (caughtError: unknown) {
                 if (!cancelled) {
-                    setError(caughtError?.message || 'Unable to create workspace')
+                    setError(errorMessage(caughtError, 'Unable to create workspace'))
                     clearWorkspaceSession(ticker)
                 }
             } finally {
@@ -271,7 +268,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
 
     async function handleAskQuestion(queryToAsk?: string) {
         const query = (queryToAsk || questionInput).trim()
-        if (!workspace || !query || qaLoading) return
+        if (!workspace || !query || qaLoading || clearingHistory || suggestingQuestions) return
 
         setQaLoading(true)
         setQaError('')
@@ -299,12 +296,13 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                 throw new Error(data.error || 'Failed to get answer from DataPulse Agent')
             }
 
+            const interaction = data.interaction || data
             const newInteraction: QAInteraction = {
                 id: data.interactionId || `qa-${Date.now()}`,
                 question: query,
-                answer: data.answer,
-                evidence: data.evidence || [],
-                followupSuggestions: data.followupSuggestions || [],
+                answer: interaction.answer || '',
+                evidence_used: interaction.evidence_used || [],
+                suggested_followups: interaction.suggested_followups || [],
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             }
 
@@ -318,30 +316,34 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
             setTimeout(() => {
                 qaBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
             }, 100)
-        } catch (caughtError: any) {
-            setQaError(caughtError?.message || 'DataPulse query failed')
+        } catch (caughtError: unknown) {
+            setQaError(errorMessage(caughtError, 'DataPulse query failed'))
         } finally {
             setQaLoading(false)
         }
     }
 
     async function handleRefreshSuggestions() {
-        if (!workspace || suggestingQuestions) return
+        if (!workspace || suggestingQuestions || qaLoading || clearingHistory) return
         setSuggestingQuestions(true)
+        setQaError('')
         try {
             const response = await fetch('/api/qa', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     workspaceId: workspace.workspaceId,
-                    suggestOnly: true,
+                    action: 'suggest',
                     apiKey: getApiKey(),
                     providerType: getProviderType(),
                     modelName: getModelName(),
                 }),
             })
             const data = await response.json()
-            if (data.success && data.suggestedQuestions) {
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to refresh suggested questions')
+            }
+            if (Array.isArray(data.suggestedQuestions)) {
                 const nextWorkspace: WorkspaceSession = {
                     ...workspace,
                     suggestedQuestions: data.suggestedQuestions,
@@ -349,21 +351,35 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                 setWorkspace(nextWorkspace)
                 saveWorkspaceSession(ticker, nextWorkspace)
             }
-        } catch {
-            // keep existing
+        } catch (caughtError: unknown) {
+            setQaError(errorMessage(caughtError, 'Failed to refresh suggested questions'))
         } finally {
             setSuggestingQuestions(false)
         }
     }
 
-    function clearHistory() {
-        if (!workspace) return
-        const nextWorkspace: WorkspaceSession = {
-            ...workspace,
-            qaHistory: [],
+    async function clearHistory() {
+        if (!workspace || qaLoading || clearingHistory || exporting || suggestingQuestions) return
+        setClearingHistory(true)
+        setQaError('')
+        try {
+            const response = await fetch('/api/qa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: workspace.workspaceId, action: 'clear' }),
+            })
+            const payload = await response.json()
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.error || 'Failed to clear conversation history')
+            }
+            const nextWorkspace = { ...workspace, qaHistory: [] }
+            setWorkspace(nextWorkspace)
+            saveWorkspaceSession(ticker, nextWorkspace)
+        } catch (caughtError: unknown) {
+            setQaError(errorMessage(caughtError, 'Failed to clear conversation history'))
+        } finally {
+            setClearingHistory(false)
         }
-        setWorkspace(nextWorkspace)
-        saveWorkspaceSession(ticker, nextWorkspace)
     }
 
     async function exportWorkspace() {
@@ -387,15 +403,15 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
             link.download = `stockx-${ticker.toLowerCase()}-research-report.docx`
             link.click()
             window.URL.revokeObjectURL(url)
-        } catch (caughtError: any) {
-            setQaError(caughtError?.message || 'Export failed')
+        } catch (caughtError: unknown) {
+            setQaError(errorMessage(caughtError, 'Export failed'))
         } finally {
             setExporting(false)
         }
     }
 
     return (
-        <div className="min-h-screen bg-[#f8f9fb] text-slate-900 font-sans">
+        <div className="min-h-screen overflow-x-clip bg-[#f8f9fb] text-slate-900 font-sans">
             {/* Top Navigation */}
             <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
                 <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -422,7 +438,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                         </button>
                         <button
                             onClick={exportWorkspace}
-                            disabled={!workspace || exporting}
+                            disabled={!workspace || exporting || clearingHistory || qaLoading}
                             className="bg-[#3154e8] hover:bg-[#2545d8] text-white font-semibold px-5 h-9 text-xs rounded-full shadow-sm hover:shadow disabled:opacity-40 inline-flex items-center gap-2 transition-all cursor-pointer"
                         >
                             <Download className="w-3.5 h-3.5" />
@@ -476,13 +492,18 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                     <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_1fr] gap-8 items-start">
                         {/* Left Column: Decision Memo */}
                         <div className="space-y-6">
+                            {workspace.coverageStatus.financialData === 'unavailable' && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                    Financial statements are unavailable. This memo uses available research sources; the listing market remains unconfirmed.
+                                </div>
+                            )}
                             {/* Stock Snapshot Hero Card */}
                             <section className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
                                 <div className="flex flex-wrap items-start justify-between gap-4 pb-5 border-b border-slate-100">
                                     <div>
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-semibold">
-                                                {workspace.coverageStatus.market.toUpperCase()}
+                                                {workspace.coverageStatus.market === 'unknown' ? 'Market unconfirmed' : workspace.coverageStatus.market.toUpperCase()}
                                             </span>
                                             <span className="text-xs font-bold text-[#3154e8]">
                                                 ${ticker}
@@ -526,7 +547,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                         <span>Evidence & Filing Disclosures ({workspace.sources.length})</span>
                                     </div>
                                     <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                                        100% Verified
+                                        {workspace.sourceSummary.filingSourceCount} filing sources
                                     </span>
                                 </div>
                                 <div className="space-y-3">
@@ -575,7 +596,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                 </div>
 
                                 <p className="text-xs sm:text-sm leading-relaxed text-slate-600 mb-5">
-                                    Interrogate <strong>${ticker}</strong> for valuation multiples, earnings surprises, competitive moats, and filings. Grounded strictly in regulatory filings for retail & institutional investors.
+                                    Interrogate <strong>${ticker}</strong> for valuation multiples, earnings surprises, competitive moats, and filings. Answers use the memo and available filing and market sources. Missing information is identified.
                                 </p>
 
                                 {/* Suggested Questions */}
@@ -587,7 +608,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                         </div>
                                         <button
                                             onClick={handleRefreshSuggestions}
-                                            disabled={suggestingQuestions}
+                                            disabled={suggestingQuestions || qaLoading || clearingHistory}
                                             className="text-xs text-slate-500 hover:text-[#3154e8] inline-flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer font-medium"
                                             title="Regenerate question ideas"
                                         >
@@ -601,7 +622,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                             <button
                                                 key={idx}
                                                 onClick={() => void handleAskQuestion(q)}
-                                                disabled={qaLoading}
+                                                disabled={qaLoading || clearingHistory || suggestingQuestions}
                                                 className="w-full text-left text-xs bg-white hover:bg-[#3154e8]/5 hover:border-[#3154e8]/40 text-slate-700 hover:text-[#3154e8] p-2.5 border border-slate-200 rounded-lg transition-all flex items-start gap-2 group leading-snug cursor-pointer shadow-2xs"
                                             >
                                                 <span className="text-[#3154e8] font-bold text-[11px] mt-0.5">
@@ -626,7 +647,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                                 }
                                             }}
                                             rows={3}
-                                            disabled={qaLoading}
+                                            disabled={qaLoading || clearingHistory || suggestingQuestions}
                                             className="w-full border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:bg-white focus:border-[#3154e8] focus:ring-2 focus:ring-[#3154e8]/10 transition-all placeholder:text-slate-400 rounded-xl resize-none"
                                             placeholder={`Ask anything about ${ticker} (e.g. valuation multiples vs peers, upcoming earnings catalysts, dividend safety, margin outlook)...`}
                                         />
@@ -638,7 +659,7 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                         </div>
                                         <button
                                             onClick={() => void handleAskQuestion()}
-                                            disabled={qaLoading || !questionInput.trim()}
+                                            disabled={qaLoading || clearingHistory || suggestingQuestions || !questionInput.trim()}
                                             className="bg-[#3154e8] hover:bg-[#2545d8] text-white font-semibold px-5 h-9 text-xs rounded-full shadow-sm hover:shadow disabled:opacity-40 inline-flex items-center justify-center gap-2 transition-all cursor-pointer"
                                         >
                                             {qaLoading ? (
@@ -673,10 +694,11 @@ export default function WorkspacePage({ params }: { params: { ticker: string } }
                                     {(workspace.qaHistory || []).length > 0 && (
                                         <button
                                             onClick={clearHistory}
+                                            disabled={clearingHistory || qaLoading || exporting || suggestingQuestions}
                                             className="text-xs text-slate-400 hover:text-red-600 inline-flex items-center gap-1 transition-colors cursor-pointer"
                                         >
                                             <Trash2 className="w-3 h-3" />
-                                            <span>Clear</span>
+                                            <span>{clearingHistory ? 'Clearing...' : 'Clear'}</span>
                                         </button>
                                     )}
                                 </div>

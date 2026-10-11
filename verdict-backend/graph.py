@@ -140,6 +140,14 @@ async def merge_node(state: VerdictState) -> dict:
     Merge all data sources into a single DATA payload.
     Mirrors: Merge (3 inputs) → Aggregate
     """
+    financial_data = state.get("financial_data", {})
+    financial_available = any(
+        isinstance(financial_data.get(field), list) and bool(financial_data[field])
+        or isinstance(financial_data.get(field), dict) and bool(financial_data[field]) and not financial_data[field].get("error") and "Error Message" not in financial_data[field]
+        for field in ("balance_sheet", "income_statement", "cash_flow", "financial_ratios")
+    )
+    if not state.get("market_intel") and not financial_available:
+        raise ValueError("Research data is unavailable. Configure TAVILY_API_KEY for research sources or FMP_API_KEY for financial statements before generating a memo.")
     merged = {
         "market_intelligence": state.get("market_intel", []),
         "financial_data": state.get("financial_data", {}),

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { errorDetails } from '@/lib/errors'
 
 export const maxDuration = 300 // 5 minutes
 
-const BACKEND_URL = process.env.VERDICT_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.VERDICT_BACKEND_URL || process.env.STOCKX_BACKEND_URL || 'http://localhost:8000'
 
 function formatProviderError(rawError: string, providerType: string, modelName: string): string {
     const lower = rawError.toLowerCase()
+    if (lower.includes('error code: 402') || lower.includes('insufficient credits') || lower.includes('requires more credits')) {
+        return `The selected model ${modelName} exceeds the available inference credits. Choose GPT-4o Mini in Inference settings or add provider credits.`
+    }
     if (lower.includes('insufficient permissions')) {
         if (providerType === 'openai') {
             return `Your OpenAI key is valid, but this project does not have access to ${modelName}. Try GPT-4.1 Mini first, switch to another OpenAI model, or use OpenRouter instead.`
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000)
 
-        const backendBody: Record<string, any> = { ticker: ticker.toUpperCase() }
+        const backendBody: Record<string, unknown> = { ticker: ticker.toUpperCase() }
         backendBody.provider_type = providerType
         backendBody.api_keys = { [providerType]: apiKey }
         backendBody.model_name = modelName
@@ -77,15 +81,16 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true, ...data })
 
-    } catch (error: any) {
-        const msg = error?.message || String(error)
-        console.error(`[VERDICT API] Error:`, msg, error?.cause)
+    } catch (error: unknown) {
+        const details = errorDetails(error)
+        const msg = details.message
+        console.error(`[VERDICT API] Error:`, msg, details.cause)
 
-        if (error?.name === 'AbortError') {
+        if (details.name === 'AbortError') {
             return NextResponse.json({ success: false, error: 'Analysis timed out (5 min). Is the Python backend running?' }, { status: 504 })
         }
 
-        if (msg.includes('ECONNREFUSED') || error?.cause?.message?.includes('ECONNREFUSED')) {
+        if (msg.includes('ECONNREFUSED') || details.cause.includes('ECONNREFUSED')) {
             return NextResponse.json(
                 { success: false, error: 'Cannot connect to Python backend at localhost:8000. Start it with: python3 main.py' },
                 { status: 503 }
@@ -93,7 +98,7 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json(
-            { success: false, error: `Server error: ${error?.cause?.message || msg}` },
+            { success: false, error: `Server error: ${details.cause || msg}` },
             { status: 500 }
         )
     }

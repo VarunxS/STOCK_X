@@ -55,6 +55,9 @@ async def invoke_with_model_fallback(
     llm_kwargs = {
         "model": model_name,
         "temperature": temperature,
+        "max_tokens": max(1, int(os.environ.get("INFERENCE_MAX_TOKENS", "8192"))),
+        "timeout": 90,
+        "max_retries": 1,
         "openai_api_key": api_key,
     }
 
@@ -72,4 +75,7 @@ async def invoke_with_model_fallback(
         llm_kwargs["model_kwargs"] = model_kwargs
 
     llm = ChatOpenAI(**llm_kwargs)
-    return await llm.ainvoke(list(messages))
+    response = await llm.ainvoke(list(messages))
+    if response.response_metadata.get("finish_reason") == "length":
+        raise ValueError("The model response exceeded the output limit. Increase INFERENCE_MAX_TOKENS or choose another model.")
+    return response

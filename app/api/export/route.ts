@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
 
-const BACKEND_URL = process.env.VERDICT_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.VERDICT_BACKEND_URL || process.env.STOCKX_BACKEND_URL || 'http://localhost:8000'
 
 export async function POST(request: NextRequest) {
     const body = await request.json()

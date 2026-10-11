@@ -17,7 +17,7 @@ import {
     PROVIDER_OPTIONS,
     type InferenceProvider,
 } from '@/lib/inference-catalog'
-import { Key, Check, ShieldCheck, ClipboardPaste, Eye, EyeOff, Sparkles, X } from 'lucide-react'
+import { Key, Check, ClipboardPaste, Eye, EyeOff, X } from 'lucide-react'
 
 interface ApiKeyModalProps {
     isOpen: boolean

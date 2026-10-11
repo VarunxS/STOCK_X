@@ -7,6 +7,12 @@ Supports both API server and CLI mode:
 from __future__ import annotations
 
 import json
+import sys
+
+# Windows terminals may default to an encoding that cannot print agent status messages.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 import asyncio
 import argparse
 from typing import Any, Optional
@@ -106,7 +112,7 @@ class ScenarioRequest(BaseModel):
     strict_provider: bool = False
 
 
-class ExportRequest(BaseModel):
+class WorkspaceRequest(BaseModel):
     workspace_id: str
 
 
@@ -386,7 +392,11 @@ async def workspace_suggest_questions(request: QuestionsRequest):
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace expired or not found")
 
+    if not request.model_name or not request.model_name.strip():
+        raise HTTPException(status_code=400, detail="Inference model is required")
     keys = _keys_dict(request.api_keys)
+    if not _selected_api_key(keys, provider_type):
+        raise HTTPException(status_code=400, detail=f"API key is required for provider: {provider_type}")
     questions = await generate_suggested_questions(
         ticker=workspace["ticker"],
         memo=workspace["memo"],
@@ -397,7 +407,7 @@ async def workspace_suggest_questions(request: QuestionsRequest):
         api_key=keys.get(provider_type),
     )
     update_workspace(request.workspace_id, {"suggested_questions": questions})
-    return {"workspaceId": request.workspace_id, "questions": questions}
+    return {"workspaceId": request.workspace_id, "suggestedQuestions": questions}
 
 
 @app.post("/workspace/scenario")
@@ -454,8 +464,16 @@ async def workspace_scenario(request: ScenarioRequest):
         raise HTTPException(status_code=500, detail=str(error))
 
 
+@app.post("/workspace/clear-history")
+async def workspace_clear_history(request: WorkspaceRequest):
+    workspace = update_workspace(request.workspace_id, {"qa_history": []})
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace expired or not found")
+    return {"workspaceId": request.workspace_id, "qaHistory": []}
+
+
 @app.post("/workspace/export")
-async def workspace_export(request: ExportRequest):
+async def workspace_export(request: WorkspaceRequest):
     workspace = get_workspace(request.workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace expired or not found")

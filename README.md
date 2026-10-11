@@ -57,12 +57,14 @@ The backend runs on `http://localhost:8000`.
 ### Required Environment
 
 Backend:
-- `TAVILY_API_KEY` (in `.env` or environment)
+- `TAVILY_API_KEY` (in `.env` or environment) for research search
+- `FMP_API_KEY` for financial statements and ratios; without it, coverage is shown as unavailable
+- `INFERENCE_MAX_TOKENS` (optional, defaults to `8192`) limits output tokens per inference call
 
 Frontend:
 - `VERDICT_BACKEND_URL` or `STOCKX_BACKEND_URL` (defaults to `http://localhost:8000`)
 
-Inference keys (OpenRouter / OpenAI / Gemini) are entered via the Inference modal in the UI and held securely in `sessionStorage`.
+Inference keys (OpenRouter / OpenAI / Gemini) are entered via the Inference modal in the UI and stored in browser `localStorage` and `sessionStorage`. Clear Key removes both copies. OpenRouter defaults to GPT-4o Mini for affordable analysis.
 
 ## Repo Structure
 
@@ -90,4 +92,30 @@ verdict-backend/
   services/                retrieval (RAG vector/lexical), export_docx, workspace_store
   tools/                   search integration
   data/                    financial data pulling
+```
+
+## Validation
+
+Frontend:
+
+```bash
+npm run lint
+npm run build
+```
+
+Backend (from `verdict-backend`):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Copy `verdict-backend/.env.example` to `verdict-backend/.env` and configure the research services. Fresh analysis requires retrieved research sources or financial data. If both are unavailable, analysis reports a setup error. A listing market is shown as unconfirmed until financial symbol resolution succeeds.
+
+On Windows, start the backend with PowerShell:
+
+```powershell
+cd verdict-backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py --host 127.0.0.1 --port 8000
 ```

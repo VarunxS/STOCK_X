@@ -13,6 +13,7 @@ import os
 import asyncio
 import httpx
 from typing import Any, Union
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,6 +29,12 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> Union[dict, list]:
     return resp.json()
 
 
+def _redact_url(url: str) -> str:
+    parts = urlsplit(url)
+    query = urlencode([(key, "[REDACTED]" if key.lower() == "apikey" else value) for key, value in parse_qsl(parts.query)])
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
 def _serialize_error(error: Exception) -> dict[str, Any]:
     payload = {
         "error": True,
@@ -36,7 +43,9 @@ def _serialize_error(error: Exception) -> dict[str, Any]:
     }
     if isinstance(error, httpx.HTTPStatusError):
         payload["status_code"] = error.response.status_code
-        payload["url"] = str(error.request.url)
+        original_url = str(error.request.url)
+        payload["url"] = _redact_url(original_url)
+        payload["message"] = str(error).replace(original_url, payload["url"])
     return payload
 
 
@@ -110,12 +119,20 @@ async def fetch_all_financial_data(ticker: str, fmp_api_key: str | None = FMP_AP
     Returns a dict with keys:
       symbol_info, balance_sheet, income_statement, cash_flow, financial_ratios
     """
-    last_bundle: dict[str, Any] | None = None
+    normalized = ticker.strip().upper()
+    fields = ("balance_sheet", "income_statement", "cash_flow", "financial_ratios")
+    if not fmp_api_key:
+        return {
+            "symbol_info": {"input_ticker": normalized, "resolved_symbol": normalized, "market": "unknown", "resolution_status": "unconfirmed"},
+            **{field: {"error": True, "type": "ConfigurationError", "message": "FMP_API_KEY is not configured"} for field in fields},
+        }
+    first_bundle: dict[str, Any] | None = None
 
     async with httpx.AsyncClient() as client:
         for symbol in _symbol_candidates(ticker):
             bundle = await _fetch_symbol_bundle(client, symbol, fmp_api_key)
-            last_bundle = bundle
+            if first_bundle is None:
+                first_bundle = bundle
 
             populated = any(
                 _looks_populated(bundle[key])
@@ -128,6 +145,7 @@ async def fetch_all_financial_data(ticker: str, fmp_api_key: str | None = FMP_AP
                         "input_ticker": ticker.strip().upper(),
                         "resolved_symbol": symbol,
                         "market": _market_for_symbol(symbol),
+                        "resolution_status": "confirmed",
                     },
                     "balance_sheet": bundle["balance_sheet"],
                     "income_statement": bundle["income_statement"],
@@ -135,17 +153,18 @@ async def fetch_all_financial_data(ticker: str, fmp_api_key: str | None = FMP_AP
                     "financial_ratios": bundle["financial_ratios"],
                 }
 
-    if last_bundle is None:
+    if first_bundle is None:
         raise RuntimeError("Financial data request failed before symbol resolution.")
 
     return {
         "symbol_info": {
             "input_ticker": ticker.strip().upper(),
-            "resolved_symbol": last_bundle["symbol"],
-            "market": _market_for_symbol(last_bundle["symbol"]),
+            "resolved_symbol": normalized,
+            "market": "unknown",
+            "resolution_status": "unconfirmed",
         },
-        "balance_sheet": last_bundle["balance_sheet"],
-        "income_statement": last_bundle["income_statement"],
-        "cash_flow": last_bundle["cash_flow"],
-        "financial_ratios": last_bundle["financial_ratios"],
+        "balance_sheet": first_bundle["balance_sheet"],
+        "income_statement": first_bundle["income_statement"],
+        "cash_flow": first_bundle["cash_flow"],
+        "financial_ratios": first_bundle["financial_ratios"],
     }

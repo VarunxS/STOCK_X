@@ -18,8 +18,8 @@ export default function RootLayout({
       <body
         className={cn("min-h-screen bg-white text-slate-900 antialiased font-sans")}
         style={{
-          ['--font-sans' as '--font-sans']: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          ['--font-mono' as '--font-mono']: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+          ['--font-sans']: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          ['--font-mono']: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
         } as CSSProperties}
       >
         {children}

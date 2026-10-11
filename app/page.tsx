@@ -6,18 +6,9 @@ import Image from 'next/image'
 import {
   Search,
   ArrowRight,
-  TrendingUp,
-  ShieldCheck,
-  BarChart3,
   Sparkles,
-  FileText,
-  Layers,
-  Globe2,
   CheckCircle2,
-  ChevronRight,
   Key,
-  Compass,
-  Zap,
 } from 'lucide-react'
 import { ApiKeyModal } from '@/components/layout/ApiKeyModal'
 import { isInferenceConfigured } from '@/lib/data-store'
@@ -141,7 +132,7 @@ export default function Home() {
       {/* ═══ HERO SECTION ═══ */}
       <section className="relative pt-16 pb-14 px-6 text-center max-w-5xl mx-auto">
         {/* Subtle decorative background gradient */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-b from-[#3154e8]/5 via-teal-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] max-w-full h-[350px] bg-gradient-to-b from-[#3154e8]/5 via-teal-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
 
         {/* Top Tag Pill */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-100 border border-slate-200/70 text-xs text-slate-700 font-medium mb-8 shadow-sm">
@@ -185,7 +176,7 @@ export default function Home() {
               <input
                 ref={searchInputRef}
                 type="text"
-                className="flex-1 bg-transparent border-0 outline-none text-slate-900 placeholder:text-slate-400 text-sm tracking-wide py-1.5"
+                className="min-w-0 flex-1 bg-transparent border-0 outline-none text-slate-900 placeholder:text-slate-400 text-sm tracking-wide py-1.5"
                 placeholder="Search any US or Indian ticker (e.g. NVDA, HDFC, RELIANCE, AAPL)..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value.toUpperCase())}
@@ -291,7 +282,7 @@ export default function Home() {
                   sizes="(max-width: 768px) 100vw, 30vw"
                 />
                 <div className="absolute bottom-2 left-2 right-2 bg-white/95 backdrop-blur-md p-2 rounded-xl text-[10px] text-slate-700 shadow-sm border border-slate-100 font-medium">
-                  "P/E Benchmark vs Sector"
+                  &quot;P/E Benchmark vs Sector&quot;
                 </div>
               </div>
             </div>

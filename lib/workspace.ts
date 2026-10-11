@@ -38,6 +38,7 @@ export interface CoverageStatus {
   resolvedSymbol: string
   filings: string
   workspaceMode: string
+  financialData?: 'available' | 'unavailable'
 }
 
 export interface WorkspaceSource {
